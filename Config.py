@@ -44,11 +44,11 @@ class config:
     input_band=12#输入的波段数
     use_denoise=False#SAR波段是否进行去噪平滑
     use_gpu=True
-    batch_size=1
+    batch_size=4
     num_workers=1
     learning_rate=0.0001
-    max_epoch=4
-    number_recording=400
+    max_epoch=1
+    number_recording=100
     weight_decay=0.0005
 
 
