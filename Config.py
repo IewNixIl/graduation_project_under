@@ -35,10 +35,10 @@ class config:
 
     model='Unet'
     model_load_path=''#'F:\\Graduation\\project_v2\\MODELS\\model29'
-    model_save_path='D:\\codes\\Graduation\\MODELS\\model1'
+    model_save_path='D:\\codes\\Graduation\\MODELS\\model3'
     model_save_path_checkpoints='D:\\codes\\Graduation\\MODELS\\checkpoints\\checkpoint.pkl'
-    statistic_save_path='D:\\codes\\Graduation\\MODELS\\sta1'
-    sub_dataset_train='train_sub1'
+    statistic_save_path='D:\\codes\\Graduation\\MODELS\\sta3'
+    sub_dataset_train='train_sub3'
 
 
     input_band=12#输入的波段数
@@ -47,7 +47,7 @@ class config:
     batch_size=1
     num_workers=1
     learning_rate=0.0001
-    max_epoch=2
+    max_epoch=4
     number_recording=400
     weight_decay=0.0005
 
