@@ -274,6 +274,6 @@ def statistic():
     print(n)        
 
 if __name__=='__main__':
-    test=UI(mode='normal',init=5921)
+    test=UI(mode='normal',init=100)
     #statistic()
     

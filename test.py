@@ -11,19 +11,24 @@ from PIL import Image
 from matplotlib import pyplot
 from skimage import io,exposure
 import shelve
+from utils import Bar
 
 
 
 class testTools:
     '''测试工具
     '''
-    def __init__(self,model,data):
+    def __init__(self,model,data,path_model=config.model_save_path):
         self.model=model
 
 
         self.test_dataloader=data
 
         self.have_cacu_confu=False
+
+        self.path_model=path_model
+
+
 
 
     def predict(self,path_predict=config.path_predict_save):
@@ -32,17 +37,19 @@ class testTools:
         '''
 
         for i,data in enumerate(self.test_dataloader,0):
-            if i%100==0:
-                print(i)
+
             inputs,labels,name=data#获得输入和标签
             if config.use_gpu:#使用gpu
                 inputs=inputs.cuda()
-
-            outputs=self.model(inputs)
+            if not config.if_merge_test:
+                outputs=self.model(inputs)
+            else:
+                outputs=(self.model[0](inputs)+self.model[1](inputs)+self.model[2](inputs))/3
 
             predict=numpy.array(outputs[0,0,:,:].cpu().detach())
 
             Image.fromarray(predict).save(path_predict+'\\'+name[0])
+
 
     def confusion(self):
         confu=numpy.zeros((2,2,100))
@@ -55,9 +62,10 @@ class testTools:
                 inputs=inputs.cuda()
                 labels=labels.cuda()
 
-            outputs=self.model(inputs)
-            #ma=outputs.max().item()
-            #mi=outputs.min().item()
+            if not config.if_merge_test:
+                outputs=self.model(inputs)
+            else:
+                outputs=(self.model[0](inputs)+self.model[1](inputs)+self.model[2](inputs))/3
 
 
             for j in range(100):
@@ -167,12 +175,21 @@ class testTools:
 
         return miou
 
-    def recordPrecision(self,thre,p,r,fmeasure,pa,iou):
+    def AA(self,recaculate=False):
+        if recaculate or not self.have_cacu_confu:
+            self.confusion()
+        confu=self.confu
+
+        aa=confu[0,0]/(confu[0,0]+confu[0,1])+confu[1,1]/(confu[1,0]+confu[1,1])
+        aa=aa/2
+        return aa
+
+    def recordPrecision(self,thre,p,r,fm,pa,iou):
         '''记录精度指标
         '''
-        name=config.model_save_path.split('\\')[-1]
+        name=self.path_model.split('\\')[-1]
         with shelve.open(config.path_acc_record) as f:
-            f[name]=[thre,p,r,fmeasure,pa,iou]
+            f[name]=[thre,p,r,fm,pa,iou]
 
 
     def drawStatistic(self):
@@ -299,7 +316,7 @@ def getimg():
     dirlist=os.listdir(config.path_labels_test)
     for i in dirlist:
         l=transform(i)
-        name,lc=getname(config.path,l)
+        name,lc,sar=getname(config.path,l)
         img=io.imread(name)[:,:,3:0:-1]
         img=(img-img.min())/(img.max()-img.min())
         img=img*255
@@ -347,19 +364,59 @@ def getlabel_low(path_to):
 def getndwi():
     '''获得labels文件夹中ndwi
     '''
-    dirlist=os.listdir(config.path_labels)
+    dirlist=os.listdir(config.path_labels_test)
     for i in dirlist:
 
         l=transform(i)
-        name,lc=getname(config.path,l)
+        name,lc,s1=getname(config.path,l)
         img=io.imread(name)[:,:,[2,7]]
         img=(img[:,:,1]-img[:,:,0])/(img[:,:,1]+img[:,:,0])
+
         img=(img-img.min())/(img.max()-img.min())
         img=img*255
         img=img.astype(numpy.uint8)
 
 
         Image.fromarray(img).save(config.path_ndwi_save+'\\'+i)
+
+def caculate_ndwi_accu():
+    d=os.listdir(config.path_ndwi_save)
+    thre=numpy.arange(0,100)/100
+    confu=numpy.zeros((2,2,100))
+    for i in d:
+        ndwi=numpy.array(Image.open(config.path_ndwi_save+'\\'+i))/255
+        labels=numpy.array(Image.open(config.path_labels_test+'\\'+i))/255
+        for j in range(thre.shape[0]):
+            predict=numpy.where(ndwi>thre[j],1,0)
+            label_true=labels==1
+            predict_true=predict==1
+            label_false=labels==0
+            predict_false=predict==0
+            TP=numpy.sum(label_true*predict_true)
+            FN=numpy.sum(label_true*predict_false)
+            FP=numpy.sum(label_false*predict_true)
+            TN=numpy.sum(label_false*predict_false)
+
+
+
+            confu[0,0,j]=confu[0,0,j]+TP
+            confu[0,1,j]=confu[0,1,j]+FN
+            confu[1,0,j]=confu[1,0,j]+FP
+            confu[1,1,j]=confu[1,1,j]+TN
+
+
+    p=confu[0,0,:]/(confu[0,0,:]+confu[1,0,:])
+    r=confu[0,0,:]/(confu[0,0,:]+confu[0,1,:])
+    fmeasure=2*p*r/(p+r)
+    iou=confu[0,0,:]/(confu[0,0,:]+confu[0,1,:]+confu[1,0,:])
+    pa=(confu[0,0,:]+confu[1,1,:])/(confu.sum(axis=0).sum(axis=0))
+
+    return p,r,fmeasure,pa,iou
+
+
+
+
+
 
 def getlabel_train(threshold):
     '''保存用于训练的标签
@@ -397,6 +454,22 @@ def getlabel_train(threshold):
 
 
 if __name__=='__main__':
+    #getlabel_low('D:\\labels\\labels_low')
+    #getimg()
+    #getsar('D:\\labels\\sar1','D:\\labels\\sar2')
+    
+    p,r,f,pa,iou=caculate_ndwi_accu()
+    l=(iou+f+pa)[[19,39,59,79]]
+    thre=int(l.argmax())
+    print('阈值为'+str(thre/100)+'时')
+    print('precision: '+str(p[thre]))
+    print('recall: '+str(r[thre]))
+    print('f measure: '+str(f[thre]))
+    print('pa: '+str(pa[thre]))
+    print('iou: '+str(iou[thre]))
+
+
+    #getndwi()
     '''
     getimg()
     getndwi()
@@ -410,16 +483,16 @@ if __name__=='__main__':
 
 
     '''模型设置'''
-
+    '''
     model=getattr(Networks,config.model)(config.input_band,1)#创立网络对象
     #加载模型
     model.load(config.model_save_path)
     if config.use_gpu:#使用gpu
         model=model.cuda()
-
+        '''
 
     '''数据加载'''
-
+    '''
     transform_img=config.transform_img
     transform_label=config.transform_label
     test_data=WaterDataset(train=False,val=False,transforms_img=transform_img,transforms_label=transform_label)
@@ -427,7 +500,7 @@ if __name__=='__main__':
 
     test_dataloader=DataLoader(test_data,1,
                             shuffle=True,#每一epoch打乱数据
-                            num_workers=config.num_workers)
+                            num_workers=2)
 
     #getsar('G:\\Graguation\\test_result\\sar1','G:\\Graguation\\test_result\\sar2')
     #getlabel_low('G:\\Graguation\\test_result\\lowlabel')
@@ -439,11 +512,14 @@ if __name__=='__main__':
 
     #t.getlabel_low_trained(0.48)
     #getlabel_low()
+
     t.drawStatistic()
 
     p,r,f=t.pr_fmeasure()
     pa=t.PA()
     iou=t.IoU()
+    miou=t.MIoU()
+    aa=t.AA()
 
     #t.drawStatistic()
     #p,r,f,pa,iou=t.integrate('F:\\Graduation\\MODELS',['model20','model21','model22','model23'])
@@ -457,6 +533,8 @@ if __name__=='__main__':
     print('f measure: '+str(f[thre]))
     print('pa: '+str(pa[thre]))
     print('iou: '+str(iou[thre]))
+    print('miou: '+str(miou[thre]))
+    print('aa: '+str(aa[thre]))
 
     t.recordPrecision(thre/100,p[thre],r[thre],f[thre],pa[thre],iou[thre])
 
@@ -467,3 +545,4 @@ if __name__=='__main__':
     pyplot.plot(iou,label='iou')
     pyplot.legend()
     pyplot.show()
+    '''

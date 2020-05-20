@@ -11,13 +11,13 @@ sys.path.append('..')
 from Config import config
 
 class WaterDataset(data.Dataset):
-    def __init__(self,train=True,transforms_img=None,transforms_label=None,val=False,sub=config.sub_dataset_train,path_mask=config.path_mask_train):
+    def __init__(self,train=True,transforms_img=None,transforms_label=None,val=False,sub=config.sub_dataset_train,path_mask=config.path_mask_train,path_label=config.path_label_train):
         if train:
             with shelve.open(config.path_devision) as f:
                 self.devision=f[sub]
 
-            if config.path_label_train:
-                self.path_labels=config.path_label_train
+            if path_label:
+                self.path_labels=path_label
             else:
                 self.path_labels=''
 
@@ -146,6 +146,15 @@ class WaterDataset(data.Dataset):
             img=numpy.zeros((s1.shape[0],s1.shape[1],s1.shape[2]+s2.shape[2]))
             img[:,:,:2]=s1
             img[:,:,2:]=s2
+        elif config.input_band==13:
+            img=numpy.zeros((s1.shape[0],s1.shape[1],s1.shape[2]+s2.shape[2]+1))
+            img[:,:,:2]=s1
+            img[:,:,2:-1]=s2
+            t=(s2[:,:,6]-s2[:,:,1])/(s2[:,:,6]+s2[:,:,1])
+            t[numpy.isnan(t)]=0
+            t[numpy.isinf(t)]=0
+            img[:,:,-1]=t
+
 
         return img.astype(numpy.float32)
 
@@ -246,15 +255,21 @@ if __name__=='__main__':
     val=False
     transform_img=config.transform_img
     transform_label=config.transform_label
-    train_data=WaterDataset(train=train,val=val,transforms_img=transform_img,transforms_label=transform_label)
+    path_model='D:\\codes\\Graduation\\MODELS\\model1'
+    path_sta='D:\\codes\\Graduation\\MODELS\\sta1'
+    path_label=''
+    path_mask=''
+    sub_name='train_sub1'
+    train_data=WaterDataset(train=train,val=val,transforms_img=transform_img,transforms_label=transform_label,sub=sub_name,path_label=path_label,path_mask=path_mask)
     #img,label=train_data[1003]
     print(len(train_data))
     for i in range(len(train_data)):
-        img,label,name,mask=train_data[i]
-        mask=mask.numpy()
+        img,label,name=train_data[i]
+        mask=label.numpy()
         label=(mask[0,:,:]*255).astype(int)
+        if label.max()==0:
+            continue
         print(label.max())
         print(label.min())
-        print(label.shape)
         pyplot.imshow(label,cmap='gray')
         pyplot.show()

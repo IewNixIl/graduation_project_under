@@ -11,13 +11,27 @@ import numpy
 import random
 from test import testTools
 import copy
+from torch.nn import init
+from utils import Bar
+from utils import Board
 
 
-def train(model_path=config.model_save_path,statistic_path=config.statistic_save_path):
+def weights_init(m):
+    classname = m.__class__.__name__
+    # print(classname)
+    if classname.find('Conv2d') != -1:
+        init.xavier_normal_(m.weight.data)
+        init.constant_(m.bias.data, 0.0)
+
+
+
+
+def train(model_path=config.model_save_path ,statistic_path=config.statistic_save_path , path_label=config.path_label_train, path_mask=config.path_mask_train, sub_name=config.sub_dataset_train,ifboard=config.ifboard):
 
     '''模型设置'''
 
     model=getattr(Networks,config.model)(config.input_band,1)#创立网络对象
+    model.apply(weights_init)
     if config.model_load_path:#加载模型
         model.load(config.model_load_path)
 
@@ -27,7 +41,8 @@ def train(model_path=config.model_save_path,statistic_path=config.statistic_save
     '''数据加载'''
     transform_img=config.transform_img
     transform_label=config.transform_label
-    train_data=WaterDataset(train=True,val=False,transforms_img=transform_img,transforms_label=transform_label)
+    train_data=WaterDataset(train=True,val=False,transforms_img=transform_img,transforms_label=transform_label,sub=sub_name,path_label=path_label,path_mask=path_mask)
+
 
 
     train_dataloader=DataLoader(train_data,config.batch_size,
@@ -39,7 +54,7 @@ def train(model_path=config.model_save_path,statistic_path=config.statistic_save
 
     test_dataloader=DataLoader(test_data,1,
                             shuffle=True,#每一epoch打乱数据
-                            num_workers=1)
+                            num_workers=2)
 
     print('data loaded')
     '''目标函数和优化器'''
@@ -51,6 +66,7 @@ def train(model_path=config.model_save_path,statistic_path=config.statistic_save
 
     '''测试工具'''
     testtools=testTools(model=model,data=test_dataloader)
+
     print('testtools prepared!')
 
 
@@ -62,13 +78,16 @@ def train(model_path=config.model_save_path,statistic_path=config.statistic_save
     checkpoint=None
     number_unchange=0
 
-
+    if config.ifbar:
+        bar=Bar(name='train',max_batch=int(50000/config.batch_size),max_epoch=config.max_epoch)
+    if ifboard:
+        board=Board(False)
     '''训练'''
 
     for epoch in range(config.max_epoch):
         t1=time.time()
         for i,data in enumerate(train_dataloader,0):
-            if config.path_mask_train:
+            if path_mask:
                 inputs,labels,name,mask=data#获得输入和标签
                 if config.use_gpu:#使用gpu
                     inputs=inputs.cuda()
@@ -83,8 +102,9 @@ def train(model_path=config.model_save_path,statistic_path=config.statistic_save
             optimizer.zero_grad()#积累的导数归零
 
 
-            if config.path_mask_train:
+            if path_mask:
                 outputs=model(inputs)*mask#前向传播
+                labels=labels*mask
             else:
                 outputs=model(inputs)
 
@@ -103,6 +123,7 @@ def train(model_path=config.model_save_path,statistic_path=config.statistic_save
 
 
                 iou=testtools.IoU(recaculate=True).max()
+                #iou=testtools.PA(recaculate=True).max()
                 recording_iou.append(iou)
 
 
@@ -114,14 +135,28 @@ def train(model_path=config.model_save_path,statistic_path=config.statistic_save
 
                 running_loss=0
 
-                print('epoch:'+str(epoch)+',batches:'+str(i-config.number_recording+1)+'--'+str(i)+
-                ',loss:'+str(recording_loss[-1])+', max_iou:'+str(iou_max_pre))
-
+                if ifboard:
+                    board.setData([recording_loss[-1],recording_iou[-1]])
+                #print('epoch:'+str(epoch)+',batches:'+str(i-config.number_recording+1)+'--'+str(i)+
+                #',loss:'+str(recording_loss[-1])+', iou:'+str(recording_iou[-1])+', max_iou:'+str(iou_max_pre))
+                #print('epoch:'+str(epoch)+',batches:'+str(i-config.number_recording+1)+'--'+str(i)+
+                #',loss:'+str(recording_loss[-1])+', iou:'+str(recording_iou[-1]))
 
             loss.backward()#后向传播
             optimizer.step()#更新参数
+
+            if config.ifbar:
+                if len(recording_loss)==0:
+                    info=None
+                else:
+                    info={'loss:':recording_loss[-1],'iou:':recording_iou[-1],'max_iou:':iou_max_pre}
+                bar.draw(info=info)
+
         t2=time.time()
         print('time: '+str((t2-t1)/60)+' min')
+
+    if ifboard:
+        board.closeClient()
 
     model_dict = torch.load(config.model_save_path_checkpoints).state_dict()
     # 载入参数

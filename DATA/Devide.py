@@ -76,7 +76,7 @@ def statistic(path_save):
     with shelve.open(path_save) as f:
         #tr=f['train']
         #te=f['test']
-        tr_sub=f['train']
+        tr_sub=f['train_sub3']
         '''
         for i in tr:
             if i[0]==0:
@@ -125,22 +125,19 @@ def sub():
     sub3=[]
     
     with shelve.open(config.path_devision) as f:
-        flag=random.sample(range(len(f['train_water'])),15000)
-        t=numpy.array(f['train_water'])
+        flag=random.sample(range(len(f['train_water'])),9000)
+        t=numpy.array(f['train'])
         tt=t[flag,:].tolist()
-        sub1=tt[:5000]
-        sub2=tt[5000:10000]
-        sub3=tt[10000:15000]
-        flag=random.sample(range(len(f['train_nowater'])),15000)
-        t=numpy.array(f['train_nowater'])
-        tt=t[flag,:].tolist()
-        sub1=sub1+tt[:5000]
-        sub2=sub2+tt[5000:10000]
-        sub3=sub3+tt[10000:15000]
-        
-        f['train_sub1']=sub1
-        f['train_sub2']=sub2
-        f['train_sub3']=sub3
+        #sub1=tt[:50221]
+        #sub2=tt[50221:100442]
+        #sub3=tt[100442:150663]
+        flag=random.sample(range(len(f['train_nowater'])),1000)
+        t=numpy.array(f['train'])
+        tt=t[flag,:].tolist()+tt
+        f['train_sub_09']=tt
+        #f['train_sub1']=sub1
+        #f['train_sub2']=sub2
+        #f['train_sub3']=sub3
         
         
         
@@ -180,19 +177,22 @@ def water_nowater():
                 print(i)
         f['train_water']=water
         f['train_nowater']=nowater
+        print(len(water))
+        print(len(nowater))
     
     
 if __name__=='__main__':
-    
-
+    #water_nowater()
+    val_test(0.25)
+    #sub()
     
     #with shelve.open(config.path_devision) as f:
     #    for i in f:
     #        print(i+'  '+str(len(f[i])))
             
-        
+    #statistic(config.path_devision)
     
-    statistic(config.path_devision)
+    #statistic(config.path_devision)
     #path=config.path
     #path_save=config.path_devision
     #val_test(0.2)
